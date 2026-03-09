@@ -25,15 +25,54 @@ const boxSize = 1;
 const geometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
 const material = new THREE.MeshLambertMaterial({ color: 0x44aa44 }); // Vert herbe
 
+// AJOUT : Stockage des objets pour la détection de collision et de clic
+const objects = [];
+
 for (let x = -10; x < 10; x++) {
     for (let z = -10; z < 10; z++) {
+        // AJOUT : Génération de relief basique au lieu de tout mettre à Y=0
+        const height = Math.floor(Math.sin(x / 3) * Math.cos(z / 3) * 2);
+        
         const cube = new THREE.Mesh(geometry, material);
-        cube.position.set(x, 0, z);
+        cube.position.set(x, height, z); // Application du relief ici
         scene.add(cube);
+        
+        // AJOUT : On ajoute le cube à la liste des objets interactifs
+        objects.push(cube); 
     }
 }
 
-camera.position.y = 2; // Hauteur des yeux
+camera.position.y = 5; // On démarre un peu plus haut pour ne pas être coincé dans le relief
+
+// AJOUT : 4.5 Système de casse et pose de blocs
+const raycaster = new THREE.Raycaster();
+const center = new THREE.Vector2(0, 0); // Toujours viser le centre de l'écran
+
+document.addEventListener('mousedown', (event) => {
+    if (!controls.isLocked) return;
+
+    raycaster.setFromCamera(center, camera);
+    const intersects = raycaster.intersectObjects(objects, false);
+
+    if (intersects.length > 0) {
+        const intersect = intersects[0];
+
+        // Clic gauche (0) : Casser le bloc
+        if (event.button === 0) {
+            scene.remove(intersect.object);
+            objects.splice(objects.indexOf(intersect.object), 1);
+        }
+        // Clic droit (2) : Poser un bloc
+        else if (event.button === 2) {
+            const voxel = new THREE.Mesh(geometry, material);
+            // On se place sur la face touchée
+            voxel.position.copy(intersect.point).add(intersect.face.normal);
+            voxel.position.floor().addScalar(0.5); // On aligne sur la grille de cubes
+            scene.add(voxel);
+            objects.push(voxel);
+        }
+    }
+});
 
 // 5. Gestion des mouvements
 let moveForward = false;
@@ -75,6 +114,9 @@ function animate() {
 
         velocity.x -= velocity.x * 10.0 * delta;
         velocity.z -= velocity.z * 10.0 * delta;
+        
+        // AJOUT : Gravité pour simuler la chute
+        velocity.y -= 9.8 * 10.0 * delta; 
 
         direction.z = Number(moveForward) - Number(moveBackward);
         direction.x = Number(moveRight) - Number(moveLeft);
@@ -85,6 +127,13 @@ function animate() {
 
         controls.moveRight(-velocity.x * delta);
         controls.moveForward(-velocity.z * delta);
+        
+        // AJOUT : Application de la vitesse Y et d'un sol invisible basique
+        controls.getObject().position.y += (velocity.y * delta);
+        if (controls.getObject().position.y < 2) {
+            velocity.y = 0;
+            controls.getObject().position.y = 2; // Bloque la chute à Y=2
+        }
 
         prevTime = time;
     }
